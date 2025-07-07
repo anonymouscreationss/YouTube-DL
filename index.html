@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-gray-900 text-white">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YouTube Anonymous Downloader</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">
+  <meta name="color-scheme" content="dark light">
+</head>
+<body class="min-h-screen flex flex-col bg-gray-900 text-white">
+  <header class="bg-gradient-to-r from-red-600 via-pink-500 to-yellow-500 text-white shadow p-6 text-center">
+    <h1 class="text-4xl font-bold mb-2 drop-shadow">Anonymous YouTube Downloader</h1>
+    <p class="text-lg opacity-90">Download YouTube videos/music anonymously – fast, safe, no logs</p>
+  </header>
+  <main class="flex-1 flex justify-center items-center p-4">
+    <div class="bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-xl">
+      <form id="ytForm" class="flex flex-col gap-4 mb-4">
+        <label for="url" class="text-lg font-semibold mb-1">Paste YouTube URL</label>
+        <input id="url" type="url" required placeholder="https://www.youtube.com/watch?v=..." class="rounded-lg p-3 bg-gray-900 border border-gray-700 text-white focus:ring-2 focus:ring-pink-400 transition" />
+        <button type="submit" class="bg-gradient-to-r from-pink-500 to-yellow-400 text-white font-bold py-2 rounded-lg shadow hover:scale-105 transition">Fetch Video Info</button>
+      </form>
+      <div id="loading" class="hidden text-pink-400 text-center">Loading...</div>
+      <div id="errorMsg" class="hidden text-red-400 text-center mb-4"></div>
+      <div id="videoInfo" class="hidden">
+        <img id="thumbnail" alt="Thumbnail" class="rounded-xl mx-auto mb-4 shadow-lg w-64" />
+        <div class="text-xl font-bold mb-2" id="title"></div>
+        <div class="mb-2 text-pink-300" id="uploader"></div>
+        <div class="mb-4 text-sm text-gray-400" id="duration"></div>
+        <div class="mb-2 font-semibold">Choose format:</div>
+        <div id="formats" class="flex flex-col gap-2 mb-4"></div>
+      </div>
+    </div>
+  </main>
+  <footer class="text-center text-gray-500 p-4">
+    &copy; 2025 Anonymous YT-DL. No logs. Not affiliated with YouTube.
+  </footer>
+  <script>
+    // Set your backend URL here:
+    const BACKEND_URL = "https://YOUR-BACKEND-URL/api";
+
+    const ytForm = document.getElementById("ytForm");
+    const loading = document.getElementById("loading");
+    const errorMsg = document.getElementById("errorMsg");
+    const videoInfo = document.getElementById("videoInfo");
+    const thumbnail = document.getElementById("thumbnail");
+    const title = document.getElementById("title");
+    const uploader = document.getElementById("uploader");
+    const duration = document.getElementById("duration");
+    const formatsDiv = document.getElementById("formats");
+
+    function humanDuration(sec) {
+      if (!sec) return '';
+      const m = Math.floor(sec / 60), s = sec % 60;
+      return `${m}:${s.toString().padStart(2, '0')} min`;
+    }
+
+    ytForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorMsg.classList.add("hidden");
+      videoInfo.classList.add("hidden");
+      loading.classList.remove("hidden");
+      formatsDiv.innerHTML = "";
+      const url = ytForm.url.value.trim();
+      try {
+        const fd = new FormData();
+        fd.append("url", url);
+        const resp = await fetch(`${BACKEND_URL}/info`, { method: "POST", body: fd });
+        if (!resp.ok) throw new Error((await resp.json()).detail || "Failed to get info.");
+        const info = await resp.json();
+        thumbnail.src = info.thumbnail;
+        title.textContent = info.title;
+        uploader.textContent = `By: ${info.uploader}`;
+        duration.textContent = `Duration: ${humanDuration(info.duration)}`;
+        formatsDiv.innerHTML = "";
+        for (const f of info.formats) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "bg-pink-600 hover:bg-yellow-400 hover:text-black transition text-white rounded-lg px-4 py-2 font-semibold shadow";
+          btn.textContent = `${f.ext.toUpperCase()} ${f.format_note ? `(${f.format_note})` : ""} ${f.filesize ? `- ${(f.filesize/1048576).toFixed(2)}MB` : ""}`;
+          btn.onclick = () => {
+            btn.disabled = true;
+            btn.textContent = "Preparing download...";
+            downloadVideo(url, f.format_id, btn);
+          };
+          formatsDiv.appendChild(btn);
+        }
+        videoInfo.classList.remove("hidden");
+      } catch (e) {
+        errorMsg.textContent = e.message || "Unknown error.";
+        errorMsg.classList.remove("hidden");
+      } finally {
+        loading.classList.add("hidden");
+      }
+    });
+
+    async function downloadVideo(url, format_id, btn) {
+      try {
+        const fd = new FormData();
+        fd.append("url", url);
+        fd.append("format_id", format_id);
+        const resp = await fetch(`${BACKEND_URL}/download`, { method: "POST", body: fd });
+        if (!resp.ok) throw new Error((await resp.json()).detail || "Download error.");
+        const disposition = resp.headers.get("Content-Disposition");
+        const filenameMatch = disposition && disposition.match(/filename="(.+)"/);
+        const filename = filenameMatch ? filenameMatch[1] : "video";
+        const blob = await resp.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          URL.revokeObjectURL(a.href);
+          a.remove();
+        }, 1000);
+        btn.textContent = "Download again";
+        btn.disabled = false;
+      } catch (e) {
+        btn.textContent = "Error! Try again";
+        btn.disabled = false;
+        alert("Download failed: " + (e.message || ""));
+      }
+    }
+  </script>
+</body>
+  </html>
